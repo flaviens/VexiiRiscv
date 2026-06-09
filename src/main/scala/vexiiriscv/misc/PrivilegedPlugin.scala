@@ -843,40 +843,42 @@ class PrivilegedPlugin(val p : PrivilegedParam, val hartIds : Seq[Int]) extends 
       }
 
       def genImsicArea(ireg: Int, topei: Int, provider: (Int, Int) => CsrCondFilter) = new Area {
-        val file = ImsicFile(hartIds(hartId), 1 until p.imsicInterrupts)
-        val identity = file.identity
-        val triggers = in(file.triggers)
-
-        api.readWrite(file.threshold, provider(IndirectCSR.eithreshold, ireg))
-
-        val sources = for (interrupt <- file.interrupts) yield new Area {
-          val id = interrupt.id
-          val offset = id / XLEN * (1 + (XLEN == 64).toInt)
-
-          api.readWrite(interrupt.ie, provider(IndirectCSR.eie0 + offset, ireg), id % XLEN)
-          api.readWrite(interrupt.ip, provider(IndirectCSR.eip0 + offset, ireg), id % XLEN)
-        }
-
-        api.read(topei, 0 -> identity, 16 -> identity)
-        val claim = new Area {
-          val toClaim = RegInit(U(0, file.idWidth bits))
-          api.onRead(topei, false){
-            toClaim := identity
-          }
-          api.onWrite(topei, true) {
-            file.claim(toClaim)
-          }
-        }
-
-        val eidelivery = RegInit(U(0x40000000, XLEN bits))
-        api.readWrite(eidelivery, provider(IndirectCSR.eidelivery, ireg))
-
+        ???
+//        val file = ImsicFile(hartIds(hartId), 1 until p.imsicInterrupts)
+//        val identity = file.identity
+//        val triggers = in(file.triggers)
+//
+//        api.readWrite(file.threshold, provider(IndirectCSR.eithreshold, ireg))
+//
+//        val sources = for (interrupt <- file.interrupts) yield new Area {
+//          val id = interrupt.id
+//          val offset = id / XLEN * (1 + (XLEN == 64).toInt)
+//
+//          api.readWrite(interrupt.ie, provider(IndirectCSR.eie0 + offset, ireg), id % XLEN)
+//          api.readWrite(interrupt.ip, provider(IndirectCSR.eip0 + offset, ireg), id % XLEN)
+//        }
+//
+//        api.read(topei, 0 -> identity, 16 -> identity)
+//        val claim = new Area {
+//          val toClaim = RegInit(U(0, file.idWidth bits))
+//          api.onRead(topei, false){
+//            toClaim := identity
+//          }
+//          api.onWrite(topei, true) {
+//            file.claim(toClaim)
+//          }
+//        }
+//
+//        val eidelivery = RegInit(U(0x40000000, XLEN bits))
+//        api.readWrite(eidelivery, provider(IndirectCSR.eidelivery, ireg))
+//
         def deliveryArbiter(aplicTarget: Bool): Bool = {
-          eidelivery.mux(
-            1 -> (identity > 0),
-            0x40000000 -> aplicTarget,
-            default -> False
-          )
+          ???
+//          eidelivery.mux(
+//            1 -> (identity > 0),
+//            0x40000000 -> aplicTarget,
+//            default -> False
+//          )
         }
       }
     }
