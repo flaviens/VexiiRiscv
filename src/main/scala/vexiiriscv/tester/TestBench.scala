@@ -24,7 +24,7 @@ import vexiiriscv.fetch.{FetchCachelessPlugin, FetchL1Plugin, PcService}
 import vexiiriscv.misc.{EmbeddedRiscvJtag, PrivilegedPlugin}
 import vexiiriscv.riscv.Riscv
 import vexiiriscv.test.konata.Backend
-import vexiiriscv.test.{PeripheralEmulator, VexiiRiscvProbe}
+import vexiiriscv.test.{IoDeviceManager, PeripheralEmulator, VexiiRiscvProbe}
 
 import java.io.{File, IOException, PrintWriter}
 import java.net.{ServerSocket, Socket}
@@ -321,7 +321,7 @@ class TestOptions {
     val priv = host.hart(0)
     val mei = host.p.withExternalInterrupt generate priv.int.m.external
     val sei = (host.p.withSupervisor && host.p.withExternalInterrupt) generate priv.int.s.external
-    val peripheral = new PeripheralEmulator(0x10000000, mei, sei, msi = priv.int.m.software, mti = priv.int.m.timer, cd = cd){
+    val peripheral = new PeripheralEmulator(mei, sei, msi = priv.int.m.software, mti = priv.int.m.timer, cd = cd){
       override def getClintTime(): BigInt = probe.cycle
       cmb.mem = mem
     }
@@ -342,7 +342,9 @@ class TestOptions {
     }
     peripheral.withStdIn = withStdIn
 
+    val manager = IoDeviceManager()
 
+    manager.registerDevice(SizeMapping(0x10000000L, 0x10000000L), peripheral)
 
     dut.host.get[LsuPlugin].filter(_.withLlcFlush).map{p =>
       val bus = p.logic.llcBus
@@ -473,7 +475,7 @@ class TestOptions {
 
     def doRead(address : Long, bytes : Int, dst : Array[Byte], offset : Int, io : Boolean): Boolean = {
       if (io) {
-        peripheral.access(false, address, dst)
+        manager.access(false, address, dst)
       } else {
         mem.readBytes(address, bytes, dst, offset)
         false
@@ -482,7 +484,7 @@ class TestOptions {
 
     def doWrite(address : Long, src : Array[Byte], io : Boolean): Boolean = {
       if (io) {
-        peripheral.access(true, address, src)
+        manager.access(true, address, src)
       } else {
         mem.write(address, src)
         false
@@ -541,17 +543,18 @@ class TestOptions {
             val byteOffset = Integer.numberOfTrailingZeros(mask)
             val size = Integer.numberOfTrailingZeros((~mask) >> byteOffset)
             val addr = (bus.ADR.toLong << addressShift) + byteOffset
-            val io = addr >= 0x10000000 && addr < 0x20000000
-            if(bus.WE.toBoolean){
+            val io = manager.hit(addr)
+            val error = if(bus.WE.toBoolean) {
               val bytes = bus.DAT_MOSI.toBytes.drop(byteOffset).take(size)
               doWrite(addr, bytes, io)
             } else {
               val bytes = new Array[Byte](bus.config.dataWidth/8)
-              doRead(addr, size, bytes, byteOffset, io)
+              val error = doRead(addr, size, bytes, byteOffset, io)
               val data = BigInt(1, bytes.reverse)
               bus.DAT_MISO #= data
+              error
             }
-            bus.ERR #= addr < 0x10000000
+            bus.ERR #= error || addr < 0x10000000
             bus.ACK #= true
           } else {
             bus.ACK #= false
@@ -840,8 +843,3 @@ class TestOptions {
     }
   }
 }
-
-
-
-
-
