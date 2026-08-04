@@ -657,7 +657,7 @@ class PrivilegedPlugin(val p : PrivilegedParam, val hartIds : Seq[Int]) extends 
         val imsic = p.withImsic generate imsicPlugin.logic.harts(hartId).m
 
         val ip = new api.Csr(CSR.MIP) {
-          val mext = if (p.withImsic) imsic.deliveryArbiter(int.m.external) else int.m.external
+          val mext = if (p.withImsic) imsic.deliveryArbiter(Some(int.m.external)) else int.m.external
 
           val meip = RegNext(mext) init (False)
           val mtip = RegNext(int.m.timer) init (False)
@@ -955,7 +955,7 @@ class PrivilegedPlugin(val p : PrivilegedParam, val hartIds : Seq[Int]) extends 
         val imsic = p.withImsic generate imsicPlugin.logic.harts(hartId).s
 
         val ip = new Area {
-          val sext = if (p.withImsic) imsic.deliveryArbiter(int.s.external) else int.s.external
+          val sext = if (p.withImsic) imsic.deliveryArbiter(Some(int.s.external)) else int.s.external
 
           val seipSoft = RegInit(False)
           val seipInput = RegNext(sext)
