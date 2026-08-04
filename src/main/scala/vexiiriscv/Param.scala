@@ -611,6 +611,7 @@ class ParamSimple() {
     if (withIterativeShift) r += "isft"
     if (extension.withDiv) r += s"d${divRadix}${divImpl}${if(divArea)"Area" else ""}"
     if (privParam.withDebug) r += s"pdbg"
+    if (privParam.withExternalInterrupt) r += "nei"
     if (embeddedJtagTap) r += s"jtagt"
     if (embeddedJtagInstruction) r += s"jtagi"
     r.mkString("_")

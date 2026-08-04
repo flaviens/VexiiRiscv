@@ -90,8 +90,14 @@ abstract class PeripheralEmulator(offset : Long, mei : Bool, sei : Bool, msi : B
         }
         case PUT_HEX => print(data.reverse.map(v => f"$v%02x").mkString(""))
         case PUT_DEC => print(f"${BigInt(data.map(_.toByte).reverse.toArray)}%d")
-        case MACHINE_EXTERNAL_INTERRUPT_CTRL => mei #= data(0).toBoolean
-        case SUPERVISOR_EXTERNAL_INTERRUPT_CTRL => sei #= data(0).toBoolean
+        case MACHINE_EXTERNAL_INTERRUPT_CTRL => {
+          if (mei == null) return true
+          mei #= data(0).toBoolean
+        }
+        case SUPERVISOR_EXTERNAL_INTERRUPT_CTRL => {
+          if (sei == null) return true
+          sei #= data(0).toBoolean
+        }
         case CLINT_BASE => msi #= (data(0).toInt & 1).toBoolean
         case CLINT_CMP => {
           data.size match {
