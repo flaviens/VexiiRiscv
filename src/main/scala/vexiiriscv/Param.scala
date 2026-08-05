@@ -610,6 +610,7 @@ class ParamSimple() {
     if (withMmu) r += s"asid$asidWidth"
     if (withIterativeShift) r += "isft"
     if (extension.withDiv) r += s"d${divRadix}${divImpl}${if(divArea)"Area" else ""}"
+    if (privParam.withImsic) r += s"if${privParam.imsicInterrupts}gf${privParam.guestExternalInterruptFiles}"
     if (privParam.withDebug) r += s"pdbg"
     if (privParam.withExternalInterrupt) r += "nei"
     if (embeddedJtagTap) r += s"jtagt"
@@ -668,6 +669,7 @@ class ParamSimple() {
     opt[Unit]("with-sxaia") action { (v, c) => addISA("smaia", "ssaia") }
     opt[Int]("imsic-interrupt-number") action { (v, c) => privParam.imsicInterrupts = v }
     opt[Int]("guest-external-interrupt-file-number") action { (v, c) => privParam.guestExternalInterruptFiles = v }
+    opt[Unit]("without-external-interrupt") action { (v, c) => privParam.withExternalInterrupt = false }
     opt[Unit]("with-whiteboxer-outputs") action { (v, c) => withWhiteboxerOutputs = true }
     opt[Unit]("with-hart-id-input") action { (v, c) => withHartIdInput = true }
     opt[Unit]("with-hart-id-input-defaulted") action { (v, c) => privParam.withHartIdInputDefaulted = true }
