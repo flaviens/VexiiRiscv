@@ -826,7 +826,7 @@ class TrapPlugin(val trapAt : Int, val recordHtinst : Boolean) extends FiberPlug
               goto(JUMP) // improvement: shave one cycle
               when(satsPorts.refill.rsp.pageFault || satsPorts.refill.rsp.accessFault) {
                 pending.state.exception := True
-                when(!satsPorts.refill.rsp.accessFault) {
+                when(satsPorts.refill.rsp.pageFault) {
                   buffer.trap.tval2 := satsPorts.refill.rsp.address.dropLow(2).asBits.resized
                 }
                 switch(satsPorts.refill.rsp.accessFault ## pending.state.arg(1 downto 0)){
