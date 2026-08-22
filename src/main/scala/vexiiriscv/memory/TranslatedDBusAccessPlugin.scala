@@ -28,6 +28,8 @@ class TranslatedDBusAccessPlugin() extends FiberPlugin with TranslatedDBusAccess
       atsPort.cmd.valid               := False
       atsPort.cmd.address             := U(0)
       atsPort.cmd.indirect            := True
+      atsPort.cmd.forceGuest          := False
+      atsPort.cmd.applyMprv           := False
       atsPort.cmd.storageEnable       := False
       atsPort.cmd.storageId           := U(0)
       atsPort.cmd.permission.read     := True

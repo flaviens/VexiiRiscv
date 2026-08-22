@@ -54,6 +54,11 @@ class TesterPlugin extends FiberPlugin{
     ptw.cmd.storageId := 0
     ptw.cmd.storageEnable := False
     if (priv.implementHypervisor) ptw.cmd.indirect := False
+    ptw.cmd.forceGuest := False
+    ptw.cmd.applyMprv := False
+    ptw.cmd.permission.read := True
+    ptw.cmd.permission.write := False
+    ptw.cmd.permission.execute := False
     ptw.rsp.ready := True
 
     val pending = CounterUpDown(4, ptw.cmd.fire, ptw.rsp.fire)

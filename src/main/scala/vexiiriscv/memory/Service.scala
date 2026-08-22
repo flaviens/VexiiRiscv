@@ -35,6 +35,9 @@ case class AddressTranslationRefillCmd(storageWidth : Int) extends Bundle{
    *    true  : this request is for implicit memory access.
    */
   val indirect = Bool()
+  /* Context used by first-stage leaf permission checks. */
+  val forceGuest = Bool()
+  val applyMprv = Bool()
   val storageId = UInt(storageWidth bits)
   val storageEnable = Bool()
 
