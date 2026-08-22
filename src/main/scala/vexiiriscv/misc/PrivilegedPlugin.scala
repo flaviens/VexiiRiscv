@@ -1260,6 +1260,7 @@ class PrivilegedPlugin(val p : PrivilegedParam, val hartIds : Seq[Int]) extends 
           val allowVirtualSupervisor = m.counteren.tm && h.counteren.tm
           val allowVirtualUser = privilege === PrivilegeMode.VS || s.counteren.tm
           val accessable = allowVirtualSupervisor && allowVirtualUser
+          val virtual = m.counteren.tm && !h.counteren.tm
           val rdtime = h.timedelta.calibrated
 
           XLEN.get match {
@@ -1268,10 +1269,13 @@ class PrivilegedPlugin(val p : PrivilegedParam, val hartIds : Seq[Int]) extends 
               api.read(rdtime(63 downto 32), GuestCsrFilter(CSR.UTIMEH))
               api.allowCsr(GuestCsrFilter(CSR.UTIME), accessable)
               api.allowCsr(GuestCsrFilter(CSR.UTIMEH), accessable)
+              api.virtualizeCsr(GuestCsrFilter(CSR.UTIME), virtual)
+              api.virtualizeCsr(GuestCsrFilter(CSR.UTIMEH), virtual)
             }
             case 64 => {
               api.read(rdtime, GuestCsrFilter(CSR.UTIME))
               api.allowCsr(GuestCsrFilter(CSR.UTIME), accessable)
+              api.virtualizeCsr(GuestCsrFilter(CSR.UTIME), virtual)
             }
           }
         }
