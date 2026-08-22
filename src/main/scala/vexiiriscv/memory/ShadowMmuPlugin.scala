@@ -68,7 +68,10 @@ class ShadowMmuPlugin(var spec : MmuSpec,
       val ppn =  Reg(UInt(ppnWidth bits))  init(0)
     }
 
-    csr.readWrite(CSR.HGATP, hgatp.vmidOffset -> hgatp.vmid, 0 -> hgatp.ppn)
+    csr.readWrite(CSR.HGATP,
+      hgatp.vmidOffset -> hgatp.vmid,
+      2 -> hgatp.ppn(hgatp.ppnWidth-1 downto 2)
+    )
     csr.read(CSR.HGATP, hgatp.modeOffset -> hgatp.mode)
     csr.allowHostCsr(CSR.HGATP, !priv.logic.harts(0).m.status.tvm || priv.isMachine(0))
 
