@@ -78,6 +78,14 @@ object MmuSpec{
     satpMode   = 8,
     pteReserved = BigInt("FFC0000000000000", 16)
   )
+  val sv32x4 = sv32.copy(
+    levels = sv32.levels.updated(1, sv32.levels(1).copy(virtualWidth = 12)),
+    virtualWidth = 34
+  )
+  val sv39x4 = sv39.copy(
+    levels = sv39.levels.updated(2, sv39.levels(2).copy(virtualWidth = 11)),
+    virtualWidth = 41
+  )
 }
 
 case class MmuTlbStorageEntryParam(
@@ -230,6 +238,9 @@ class MmuPlugin(var spec : MmuSpec,
                 var physicalWidth : Int,
                 var asidWidth : Int,
                 var withGuestSfenceCheck : Boolean) extends FiberPlugin with GenericMmuPlugin{
+  override def requestWidth = spec.virtualWidth
+  override def translatedWidth = physicalWidth max withGuestSfenceCheck.mux(spec.virtualWidth + 2, physicalWidth)
+
   def withGlobalCheck = asidWidth > 0
 
   override def isShadowMmu : Boolean = false
@@ -280,7 +291,7 @@ class MmuPlugin(var spec : MmuSpec,
 
     accessLock.release()
 
-    def physCap(range : Range) = (range.high min physicalWidth-1) downto range.low
+    def physCap(range : Range) = (range.high min translatedWidth-1) downto range.low
 
     assert(HART_COUNT.get == 1)
     val satp = new Area {
@@ -341,7 +352,7 @@ class MmuPlugin(var spec : MmuSpec,
       checkGlobal = withGlobalCheck,
       checkGuest  = priv.implementHypervisor
     )
-    val storages = for(ss <- storageSpecs) yield new MmuTlbStorage(spec, physicalWidth, tlbGenerateParam, ss)
+    val storages = for(ss <- storageSpecs) yield new MmuTlbStorage(spec, translatedWidth, tlbGenerateParam, ss)
 
     assert(HART_COUNT.get == 1)
     val isMachine = priv.getPrivilege(0) === PrivilegeMode.M
@@ -502,7 +513,7 @@ class MmuPlugin(var spec : MmuSpec,
       })
 
       val load = new Area{
-        val address = Reg(UInt(PHYSICAL_WIDTH bits))
+        val address = Reg(UInt(translatedWidth bits))
 
         def cmd = accessBus.cmd
         val rspUnbuffered = accessBus.rsp
@@ -524,7 +535,7 @@ class MmuPlugin(var spec : MmuSpec,
                         reservedFault
         val levelToPhysicalAddress = List.fill(spec.levels.size)(UInt(spec.physicalWidth bits))
         val levelException = List.fill(spec.levels.size)(False)
-        val nextLevelBase = U(0, PHYSICAL_WIDTH bits)
+        val nextLevelBase = U(0, translatedWidth bits)
         for((level, id) <- spec.levels.zipWithIndex) {
           nextLevelBase(physCap(level.physicalRange)) := readed(level.entryRange).asUInt.resized
           levelToPhysicalAddress(id) := 0
@@ -576,11 +587,12 @@ class MmuPlugin(var spec : MmuSpec,
         val pteFault = (load.exception || load.levelException(levelId)) || (levelId == 0).mux(!load.leaf, False)
         val pteReadError = load.rsp.error(0)
         val shadowReadError = load.rsp.error(1)
-        val leafAccessFault = load.levelToPhysicalAddress(levelId).drop(physicalWidth) =/= 0 //levelToPhysicalAddress is used to emit fault when the final translated address it outside the range of the physical addresses
+        val leafGuestFault = isTwoStage && load.levelToPhysicalAddress(levelId).drop(spec.virtualWidth + 2) =/= 0
+        val leafAccessFault = !isTwoStage && load.levelToPhysicalAddress(levelId).drop(physicalWidth) =/= 0
         val pageFault = !shadowReadError && !pteReadError && pteFault
         val accessFault = pteReadError || (!pteFault && leafAccessFault)
-        val guestFault = shadowReadError && !pteReadError
-        val translationFault = pteFault || leafAccessFault
+        val guestFault = !pteReadError && (shadowReadError || (!pteFault && leafGuestFault))
+        val translationFault = pteFault || leafAccessFault || leafGuestFault
 
         def doneLogic() : Unit = {
           val translatedAddress = load.levelToPhysicalAddress(levelId)
@@ -599,13 +611,13 @@ class MmuPlugin(var spec : MmuSpec,
             o.bypass := False
             o.pageFault := pageFault
             o.accessFault := accessFault
-            o.guestFault := shadowReadError
+            o.guestFault := guestFault
             o.pf  := pageFault
             o.ae_ptw    := accessFault && !load.leaf
             o.ae_final  := accessFault && load.leaf //Note so sure
             o.level := spec.levels.size - 1 - levelId
             o.address := Mux(translationFault,
-              Mux(shadowReadError, load.readed.asUInt, U(0)),
+              Mux(shadowReadError, load.readed.asUInt, translatedAddress),
               translatedAddress
             ).resized
           }

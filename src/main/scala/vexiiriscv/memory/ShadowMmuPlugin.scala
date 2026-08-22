@@ -21,6 +21,8 @@ class ShadowMmuPlugin(var spec : MmuSpec,
                       var physicalWidth : Int,
                       var vmidWidth : Int) extends FiberPlugin with GenericMmuPlugin{
   override def isShadowMmu : Boolean = true
+  override def requestWidth = spec.virtualWidth
+  override def translatedWidth = physicalWidth
 
   /* Second stage is always zero-extended */
   def getSignExtension(kind: AddressTranslationPortUsage, rawAddress: UInt) = False
@@ -198,7 +200,7 @@ class ShadowMmuPlugin(var spec : MmuSpec,
       val CMD, RSP, REFILL, DONE = List.fill(spec.levels.size)(new State)
 
       val busy = !isActive(IDLE)
-      val virtual = Reg(UInt(MIXED_WIDTH bits))
+      val virtual = Reg(UInt(requestWidth bits))
 
       setEntry(IDLE)
 
