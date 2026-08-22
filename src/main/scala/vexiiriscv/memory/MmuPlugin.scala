@@ -617,7 +617,7 @@ class MmuPlugin(var spec : MmuSpec,
             o.ae_final  := accessFault && load.leaf //Note so sure
             o.level := spec.levels.size - 1 - levelId
             o.address := Mux(translationFault,
-              Mux(shadowReadError, load.readed.asUInt, translatedAddress),
+              Mux(leafGuestFault, translatedAddress, Mux(shadowReadError, load.readed.asUInt, U(0))),
               translatedAddress
             ).resized
           }
