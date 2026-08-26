@@ -14,7 +14,7 @@ import scala.collection.mutable.ArrayBuffer
  * - RISC-V CLINT
  * - Simulation pass/fail commands
  */
-abstract class PeripheralEmulator(offset : Long, mei : Bool, sei : Bool, msi : Bool = null, mti : Bool = null, cd : ClockDomain = null) {
+abstract class PeripheralEmulator(mei : Bool, sei : Bool, msi : Bool = null, mti : Bool = null, cd : ClockDomain = null) extends EmulatedDevice {
   val PUTC = 0
   val PUT_HEX = 0x8
   val CLINT_BASE = 0x10000
@@ -75,12 +75,11 @@ abstract class PeripheralEmulator(offset : Long, mei : Bool, sei : Bool, msi : B
   }
 
 
-  def access(write : Boolean, address : Long, data : Array[Byte]) : Boolean = {
-    val addressPatched = address - offset
+  def access(write : Boolean, address : BigInt, data : Array[Byte]) : Boolean = {
     if(write) {
       val raw = BigInt(data.map(_.toByte).reverse.toArray)
       val v = raw.toLong
-      addressPatched.toInt match {
+      address.toInt match {
         case PUTC => {
           val c = data(0).toChar
           print(c.toString match {
@@ -90,8 +89,14 @@ abstract class PeripheralEmulator(offset : Long, mei : Bool, sei : Bool, msi : B
         }
         case PUT_HEX => print(data.reverse.map(v => f"$v%02x").mkString(""))
         case PUT_DEC => print(f"${BigInt(data.map(_.toByte).reverse.toArray)}%d")
-        case MACHINE_EXTERNAL_INTERRUPT_CTRL => mei #= data(0).toBoolean
-        case SUPERVISOR_EXTERNAL_INTERRUPT_CTRL => sei #= data(0).toBoolean
+        case MACHINE_EXTERNAL_INTERRUPT_CTRL => {
+          if (mei == null) return true
+          mei #= data(0).toBoolean
+        }
+        case SUPERVISOR_EXTERNAL_INTERRUPT_CTRL => {
+          if (sei == null) return true
+          sei #= data(0).toBoolean
+        }
         case CLINT_BASE => msi #= (data(0).toInt & 1).toBoolean
         case CLINT_CMP => {
           data.size match {
@@ -123,7 +128,7 @@ abstract class PeripheralEmulator(offset : Long, mei : Bool, sei : Bool, msi : B
         for (i <- 0 until data.size) data(i) = (that >> i*8).toByte
       }
       for(i <- 0 until data.size) data(i) = 0
-      addressPatched.toInt match {
+      address.toInt match {
         case IO_FAULT_ADDRESS => {
           simRandom.nextBytes(data)
           return true;

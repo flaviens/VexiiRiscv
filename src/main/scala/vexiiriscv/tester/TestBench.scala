@@ -24,7 +24,7 @@ import vexiiriscv.fetch.{FetchCachelessPlugin, FetchL1Plugin, PcService}
 import vexiiriscv.misc.{EmbeddedRiscvJtag, PrivilegedPlugin}
 import vexiiriscv.riscv.Riscv
 import vexiiriscv.test.konata.Backend
-import vexiiriscv.test.{PeripheralEmulator, VexiiRiscvProbe}
+import vexiiriscv.test.{ImsicPeripheralEmulator, IoDeviceManager, PeripheralEmulator, VexiiRiscvProbe}
 
 import java.io.{File, IOException, PrintWriter}
 import java.net.{ServerSocket, Socket}
@@ -32,6 +32,7 @@ import java.nio.ByteBuffer
 import java.util.Scanner
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
+import vexiiriscv.misc.PrivilegedParam.base
 
 /**
  * This is the main VexiiRiscv testbench, you can invoke it from command line and is based on the TestOptions class
@@ -75,6 +76,19 @@ object TestBench extends App {
         override def isExecutable: Boolean = true
       }
     )
+    def imsicRegion(addressMapping: SizeMapping) = new PmaRegion {
+      override def mapping: AddressMapping = addressMapping
+      override def transfers: MemoryTransfers = M2sTransfers(
+        get = SizeRange(4),
+        putFull = SizeRange(4)
+      )
+      override def isMain: Boolean = false
+      override def isExecutable: Boolean = false
+    }
+    if (param.privParam.withImsic) {
+      regions += imsicRegion(SizeMapping(0x24000000L, param.hartCount * 0x1000L))
+      if (param.privParam.withSupervisor) regions += imsicRegion(SizeMapping(0x28000000L, param.hartCount * 0x40000L))
+    }
     ret.foreach{
       case p: FetchCachelessPlugin => p.regions.load(regions)
       case p: LsuCachelessPlugin => p.regions.load(regions)
@@ -319,28 +333,47 @@ class TestOptions {
 
     val host = dut.host[PrivilegedPlugin]
     val priv = host.hart(0)
-    val peripheral = new PeripheralEmulator(0x10000000, priv.int.m.external, (priv.int.s != null) generate priv.int.s.external, msi = priv.int.m.software, mti = priv.int.m.timer, cd = cd){
+    val mei = host.p.withExternalInterrupt generate priv.int.m.external
+    val sei = (host.p.withSupervisor && host.p.withExternalInterrupt) generate priv.int.s.external
+    val peripheral = new PeripheralEmulator(mei, sei, msi = priv.int.m.software, mti = priv.int.m.timer, cd = cd){
       override def getClintTime(): BigInt = probe.cycle
       cmb.mem = mem
     }
     cd.onSamplings {
       host.logic.rdtime #= probe.cycle
     }
-    if (host.p.withImsic) {
-      priv.m.imsic.trigger.valid #= false
-      priv.m.imsic.trigger.payload #= 0
-      if (host.p.withSupervisor) {
-        priv.s.imsic.trigger.valid #= false
-        priv.s.imsic.trigger.payload #= 0
-      }
-      if (host.p.withHypervisor && host.p.withGuestImsic) priv.h.imsic.triggers.foreach(trigger => {
-        trigger.valid #= false
-        trigger.payload #= 0
-      })
-    }
     peripheral.withStdIn = withStdIn
 
+    val manager = IoDeviceManager()
 
+    manager.registerDevice(SizeMapping(0x10000000L, 0x10000000L), peripheral)
+
+    if (host.p.withImsic) {
+      val layout = ImsicPeripheralEmulator.machineLayout
+      val mImsic = ImsicPeripheralEmulator.build(
+        base      = layout.base,
+        mapping   = layout.mapping,
+        bindings  = Seq(priv.m.imsic.file.asImsicFileInfo() -> priv.m.imsic.trigger),
+        cd        = cd
+      )
+      mImsic.foreach(device => manager.registerDevice(device.addressMapping, device))
+
+      if (host.p.withSupervisor) {
+        val guests = (host.p.withHypervisor && host.p.withGuestImsic).mux(
+          priv.h.imsic.files.zip(priv.h.imsic.triggers).map { case (file, trigger) => file.asImsicFileInfo() -> trigger },
+          Seq.empty
+        )
+        val bindings = Seq(priv.s.imsic.file.asImsicFileInfo() -> priv.s.imsic.trigger) ++ guests
+        val layout = ImsicPeripheralEmulator.supervisorLayout
+        val sImsic = ImsicPeripheralEmulator.build(
+          base      = layout.base,
+          mapping   = layout.mapping,
+          bindings  = bindings,
+          cd        = cd
+        )
+        sImsic.foreach(device => manager.registerDevice(device.addressMapping, device))
+      }
+    }
 
     dut.host.get[LsuPlugin].filter(_.withLlcFlush).map{p =>
       val bus = p.logic.llcBus
@@ -351,7 +384,6 @@ class TestOptions {
         rspQueue._2.enqueue {p => }
       }
     }
-
 
     var forceProbe = Option.empty[Long => Unit]
 
@@ -471,7 +503,7 @@ class TestOptions {
 
     def doRead(address : Long, bytes : Int, dst : Array[Byte], offset : Int, io : Boolean): Boolean = {
       if (io) {
-        peripheral.access(false, address, dst)
+        manager.access(false, address, dst)
       } else {
         mem.readBytes(address, bytes, dst, offset)
         false
@@ -480,7 +512,7 @@ class TestOptions {
 
     def doWrite(address : Long, src : Array[Byte], io : Boolean): Boolean = {
       if (io) {
-        peripheral.access(true, address, src)
+        manager.access(true, address, src)
       } else {
         mem.write(address, src)
         false
@@ -539,17 +571,18 @@ class TestOptions {
             val byteOffset = Integer.numberOfTrailingZeros(mask)
             val size = Integer.numberOfTrailingZeros((~mask) >> byteOffset)
             val addr = (bus.ADR.toLong << addressShift) + byteOffset
-            val io = addr >= 0x10000000 && addr < 0x20000000
-            if(bus.WE.toBoolean){
+            val io = manager.hit(addr)
+            val error = if(bus.WE.toBoolean) {
               val bytes = bus.DAT_MOSI.toBytes.drop(byteOffset).take(size)
               doWrite(addr, bytes, io)
             } else {
               val bytes = new Array[Byte](bus.config.dataWidth/8)
-              doRead(addr, size, bytes, byteOffset, io)
+              val error = doRead(addr, size, bytes, byteOffset, io)
               val data = BigInt(1, bytes.reverse)
               bus.DAT_MISO #= data
+              error
             }
-            bus.ERR #= addr < 0x10000000
+            bus.ERR #= error || addr < 0x10000000
             bus.ACK #= true
           } else {
             bus.ACK #= false
@@ -838,8 +871,3 @@ class TestOptions {
     }
   }
 }
-
-
-
-
-
