@@ -235,7 +235,7 @@ class CsrHartApi(csrService: CsrService, hartId : Int){
     }
   }
 
-  def virtualizeCsr(csrFilter : Any, cond: Bool) = csrService.onDecode(csrFilter) {
+  def isVirtualAccess(csrFilter : Any, cond: Bool) = csrService.onDecode(csrFilter) {
     when(csrService.accessHartId(hartId)) {
       when (cond) {
         csrService.bus.decode.doVirtual()

@@ -1257,25 +1257,32 @@ class PrivilegedPlugin(val p : PrivilegedParam, val hartIds : Seq[Int]) extends 
         }
 
         val guest = p.withHypervisor generate new Area {
-          val allowVirtualSupervisor = m.counteren.tm && h.counteren.tm
+          val allowHost = m.counteren.tm
+          val allowVirtualSupervisor = h.counteren.tm
           val allowVirtualUser = privilege === PrivilegeMode.VS || s.counteren.tm
           val accessable = allowVirtualSupervisor && allowVirtualUser
-          val virtual = m.counteren.tm && !h.counteren.tm
+          val virtual = !h.counteren.tm
           val rdtime = h.timedelta.calibrated
 
           XLEN.get match {
             case 32 => {
-              api.read(rdtime(31 downto 0), GuestCsrFilter(CSR.UTIME))
-              api.read(rdtime(63 downto 32), GuestCsrFilter(CSR.UTIMEH))
-              api.allowCsr(GuestCsrFilter(CSR.UTIME), accessable)
-              api.allowCsr(GuestCsrFilter(CSR.UTIMEH), accessable)
-              api.virtualizeCsr(GuestCsrFilter(CSR.UTIME), virtual)
-              api.virtualizeCsr(GuestCsrFilter(CSR.UTIMEH), virtual)
+              val timeFilter = GuestCsrFilter(CSR.UTIME)
+              val timehFilter = GuestCsrFilter(CSR.UTIMEH)
+              api.read(rdtime(31 downto 0), timeFilter)
+              api.read(rdtime(63 downto 32), timehFilter)
+              api.allowHostCsr(timeFilter, allowHost)
+              api.allowHostCsr(timehFilter, allowHost)
+              api.allowCsr(timeFilter, accessable)
+              api.allowCsr(timehFilter, accessable)
+              api.isVirtualAccess(timeFilter, virtual)
+              api.isVirtualAccess(timehFilter, virtual)
             }
             case 64 => {
-              api.read(rdtime, GuestCsrFilter(CSR.UTIME))
-              api.allowCsr(GuestCsrFilter(CSR.UTIME), accessable)
-              api.virtualizeCsr(GuestCsrFilter(CSR.UTIME), virtual)
+              val timeFilter = GuestCsrFilter(CSR.UTIME)
+              api.read(rdtime, timeFilter)
+              api.allowHostCsr(timeFilter, allowHost)
+              api.allowCsr(timeFilter, accessable)
+              api.isVirtualAccess(timeFilter, virtual)
             }
           }
         }
